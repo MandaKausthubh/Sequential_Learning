@@ -1,12 +1,10 @@
 from abc import abstractmethod
-from typing_extensions import override
 
-import torch
 from torch import nn, optim, utils, Tensor
-import pytorch_lightning as pl
 from lightning import LightningModule
 
 from peft import PeftConfig, PeftMixedModel, PeftModel, get_peft_model
+import torch
 from transformers import AutoModel, AutoConfig, AutoProcessor, PreTrainedModel
 
 from typing import Any, Dict, Optional, Union, cast
@@ -32,9 +30,6 @@ class TaskHead(nn.Module):
 
     def calculate_loss(self, y, target):
         return self.loss_function(y, target)
-
-
-
 
 
 class BaseModel(LightningModule):
@@ -104,9 +99,7 @@ class BaseModel(LightningModule):
     def _get_current_task_head(self):
         return self.current_task
 
-
     # ======= Configuring Nostalgia ===========
-
     def switch_on_nostalgia(self) -> None:
         self.use_nostalgia = True
 
@@ -122,9 +115,7 @@ class BaseModel(LightningModule):
     def _non_nostalgic_optimizer(self):
         pass
 
-
     # ======= To Be implemented =========
-
     def _forward_head(self, repr):
         assert self.current_head is not None, "No current head is choosen"
         return self.current_head(repr)
@@ -144,3 +135,35 @@ class BaseModel(LightningModule):
     @abstractmethod
     def validation_step(self, *args: Any, **kwargs: Any):
         pass
+
+    # ====== Nostalgia: Code ======
+    def _get_flat_grad(self):
+        grad, params = [], []
+        if self.use_peft:
+            assert self.peft_model is not None, "PEFT Model is None: Can't compute PEFT Flat grad vector"
+            params = [p for p in self.peft_model.parameters() if p.requires_grad]
+        else:
+            params = self.backbone.parameters()
+        for p in params:
+            if p.grad is not None:
+                grad.append(p.grad.view(-1))
+        return torch.cat(grad)
+
+    def _apply_nostalgia_operators(self, Q, g):
+        v = Q.T @ g
+        return g - (Q@v)
+
+    def _set_params_grad(self, flat_grad):
+        idx = 0
+        params = []
+        if self.use_peft:
+            assert self.peft_model is not None, "PEFT Model is None: Can't compute PEFT Flat grad vector"
+            params = [p for p in self.peft_model.parameters() if p.requires_grad]
+        else:
+            params = self.backbone.parameters()
+
+        for p in params:
+            num = p.numel()
+            if p.grad is not None:
+                p.grad.copy_(flat_grad[idx:idx+num].view_as(p))
+            idx += num
