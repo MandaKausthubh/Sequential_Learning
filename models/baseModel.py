@@ -151,7 +151,7 @@ class BaseModel(LightningModule):
         return self.current_head(repr)
 
     @abstractmethod
-    def _get_representations(self, x): pass
+    def _get_representations(self, inputs): pass
 
     @abstractmethod
     def _parse_batch(self, batch) -> Tuple[Tensor, Tensor]: pass
@@ -187,7 +187,7 @@ class BaseModel(LightningModule):
         return loss
 
     @abstractmethod
-    def validation_step(self, batch, batch_idx): pass
+    def validation_step(self, batch, batch_idx) -> Tensor: pass
 
     @abstractmethod
-    def test_step(self, batch, batch_idx): pass
+    def test_step(self, batch, batch_idx) -> Tensor: pass
