@@ -29,6 +29,7 @@ class ViTBaseModel(BaseModel):
             peft_config=peft_config,
             user_nostalgia=user_nostalgia,
         )
+
     def _parse_batch(self, batch) -> Tuple[Any, torch.Tensor]:
         """
         Input batch may be:
