@@ -7,7 +7,7 @@ from lightning import LightningModule
 from peft import PeftConfig, PeftMixedModel, PeftModel, get_peft_model
 import torch
 from transformers import AutoModel, AutoConfig, AutoProcessor, PreTrainedModel
-from typing import Any, Dict, Optional, Union, Iterable, cast
+from typing import Dict, Optional, Tuple, Union, Iterable, cast
 
 # ★ import the optimizer we wrote earlier
 from utils.nostalgia import NostalgiaOptimizer
@@ -15,7 +15,7 @@ from utils.nostalgia import NostalgiaOptimizer
 
 class TaskHead(nn.Module):
     def __init__(self, task_name: str, input_dim: int, output_dim: int,
-                 loss_function = nn.CrossEntropyLoss):
+                 loss_function = nn.CrossEntropyLoss()):
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss_function = loss_function
@@ -24,7 +24,7 @@ class TaskHead(nn.Module):
     def forward(self, data):
         return self.linear(data)
 
-    def calculate_loss(self, y, target):
+    def calculate_loss(self, y, target) -> Tensor:
         return self.loss_function(y, target)
 
 
@@ -32,7 +32,7 @@ class BaseModel(LightningModule):
     def __init__(
         self,
         model_name:str,
-        lanczos_r:int,
+        lanczos_r:int = 16,
         use_peft:bool = False,
         peft_config:Optional[PeftConfig] = None,
         user_nostalgia:bool = False,
@@ -42,6 +42,9 @@ class BaseModel(LightningModule):
         self.lanczos_rank = lanczos_r
         self.use_peft = use_peft
         self.peft_config = peft_config
+
+        if self.use_peft:
+            self.automatic_optimization = False
 
         self.model_config = AutoConfig.from_pretrained(self.model_name)
         self.backbone:PreTrainedModel = AutoModel.from_pretrained(self.model_name, config=self.model_config)
@@ -74,7 +77,7 @@ class BaseModel(LightningModule):
         if not self.use_peft:
             print("BaseModel.use_peft is False. Using backbone without PEFT.")
             return
-        
+
         if self.peft_config is None:
             raise AttributeError("peft_config cannot be None when use_peft=True")
 
@@ -151,7 +154,37 @@ class BaseModel(LightningModule):
     def _get_representations(self, x): pass
 
     @abstractmethod
-    def training_step(self, batch, batch_idx): pass
+    def _parse_batch(self, batch) -> Tuple[Tensor, Tensor]: pass
+
+    def training_step(self, batch, batch_idx):
+        """
+        One training iteration:
+        1. Extract inputs and labels
+        2. Compute backbone representations
+        3. Forward through the current task-specific head
+        4. Compute loss
+        5. Log and return loss
+        """
+        assert self.current_head is not None, (
+            "Current task head not set. "
+            "Call `set_current_task_head(task_name)` before training."
+        )
+
+        inputs, labels = self._parse_batch(batch)
+
+        repr = self._get_representations(inputs)
+        logits = self._forward_head(repr)
+        loss = self.current_head.calculate_loss(logits, labels)
+
+        self.log(
+            "train_loss",
+            loss,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
 
     @abstractmethod
     def validation_step(self, batch, batch_idx): pass
