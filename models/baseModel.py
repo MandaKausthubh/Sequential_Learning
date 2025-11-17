@@ -1,26 +1,22 @@
+# base_model.py
 from abc import abstractmethod
 
-from torch import nn, optim, utils, Tensor
+from torch import nn, optim, Tensor
 from lightning import LightningModule
 
 from peft import PeftConfig, PeftMixedModel, PeftModel, get_peft_model
 import torch
 from transformers import AutoModel, AutoConfig, AutoProcessor, PreTrainedModel
+from typing import Any, Dict, Optional, Union, Iterable, cast
 
-from typing import Any, Dict, Optional, Union, cast
+# ★ import the optimizer we wrote earlier
+from utils.nostalgia import NostalgiaOptimizer
 
 
 class TaskHead(nn.Module):
-    def __init__(
-        self,
-        task_name:str,
-        input_dim:int,
-        output_dim:int,
-        loss_function = nn.CrossEntropyLoss,
-        *args,
-        **kwargs
-    ) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, task_name: str, input_dim: int, output_dim: int,
+                 loss_function = nn.CrossEntropyLoss):
+        super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss_function = loss_function
         self.task_name = task_name
@@ -39,7 +35,9 @@ class BaseModel(LightningModule):
         lanczos_r:int,
         use_peft:bool = False,
         peft_config:Optional[PeftConfig] = None,
+        user_nostalgia:bool = False,
     ):
+        super().__init__()
         self.model_name = model_name
         self.lanczos_rank = lanczos_r
         self.use_peft = use_peft
@@ -49,7 +47,7 @@ class BaseModel(LightningModule):
         self.backbone:PreTrainedModel = AutoModel.from_pretrained(self.model_name, config=self.model_config)
         self.processor = AutoProcessor.from_pretrained(self.model_name)
 
-        self.representation_dim:int = -1
+        # determine hidden size
         if hasattr(self.backbone.config, "hidden_size"):
             self.representation_dim = self.backbone.config.hidden_size
         elif hasattr(self.backbone, "hidden_size"):
@@ -61,109 +59,102 @@ class BaseModel(LightningModule):
         self.current_head:Optional[TaskHead]= None
         self.current_task:Optional[str] = None
 
-        self.use_nostalgia = False
-
-        self.peft_active = False
+        self.use_nostalgia:bool = user_nostalgia
+        self.peft_active:bool = False
         self.peft_model:Optional[Union[PeftModel, PeftMixedModel]] = None
         self._apply_peft()
 
+        # ★ Nostalgia storage for Q and scaling
+        self.nostalgia_Q: Optional[torch.Tensor] = None
+        self.nostalgia_scaling: Optional[torch.Tensor] = None
 
 
-
+    # ------------------ PEFT ------------------
     def _apply_peft(self):
         if not self.use_peft:
-            print("BaseModel.use_peft is set to False. Not configuring with PEFT")
-        else:
-            if self.peft_config is None:
-                raise AttributeError("PEFT Configureation can't be None")
-            self.peft_model = get_peft_model(self.backbone, self.peft_config)
-            self.peft_active = True
+            print("BaseModel.use_peft is False. Using backbone without PEFT.")
+            return
+        
+        if self.peft_config is None:
+            raise AttributeError("peft_config cannot be None when use_peft=True")
+
+        self.peft_model = get_peft_model(self.backbone, self.peft_config)
+        self.peft_active = True
 
     def _merge_and_unload(self):
         if not self.use_peft:
             raise AttributeError("PEFT not configured: Cannot merge and unload")
 
         assert self.peft_model is not None, "PEFT model is None"
-        self.backbone = cast(PreTrainedModel, self.peft_model.merge_and_unload())# type: ignore
+        self.backbone = cast(PreTrainedModel, self.peft_model.merge_and_unload()) #type: ignore
         self.peft_active = False
 
+
+    # ---------------- Tasks -------------------
     def add_task(self, task_name:str, output_dim:int):
         self.task_dict[task_name] = TaskHead(task_name, self.representation_dim, output_dim)
 
     def set_current_task_head(self, task_name):
-        if task_name not in self.task_dict.keys():
-            raise ValueError("Task not found in task list")
+        if task_name not in self.task_dict:
+            raise ValueError("Task not found")
         self.current_task = task_name
         self.current_head = self.task_dict[task_name]
+        return self.current_head
 
-    def _get_current_task_head(self):
-        return self.current_task
 
-    # ======= Configuring Nostalgia ===========
-    def switch_on_nostalgia(self) -> None:
-        self.use_nostalgia = True
+    # ------------- Nostalgia switches ---------------
+    def switch_on_nostalgia(self):  self.use_nostalgia = True
+    def switch_off_nostalgia(self): self.use_nostalgia = False
 
-    def switch_off_nostalgia(self) -> None:
-        self.use_nostalgia = False
+    # ============= OPTIMIZER INTEGRATION ==============
+    def configure_optimizers(self): #type: ignore
+        # ★ If nostalgia ON -> wrap AdamW or any optimizer with NostalgiaOptimizer
+        if self.use_nostalgia:
 
-    def configure_optimizers(self):
-        return super().configure_optimizers()
+            params = self._get_trainable_params()
+            base_opt = optim.AdamW(params, lr=1e-4)
 
-    def _nostalgic_optimizer(self):
-        pass
+            nostalgia = NostalgiaOptimizer(
+                base_opt,
+                params=params,
+                device=self.device,      # Lightning gives this automatically
+                dtype=torch.float32
+            )
 
-    def _non_nostalgic_optimizer(self):
-        pass
+            # If Q available from previous task, set it
+            if self.nostalgia_Q is not None:
+                nostalgia.set_Q(self.nostalgia_Q, scaling=self.nostalgia_scaling)
 
-    # ======= To Be implemented =========
+            return nostalgia
+
+        # ★ Non-Nostalgia mode → return normal optimizer
+        else:
+            params = self._get_trainable_params()
+            return optim.AdamW(params, lr=1e-4)
+
+
+    # ★ Helper: choose which params to optimize
+    def _get_trainable_params(self) -> Iterable[nn.Parameter]:
+        if self.use_peft:
+            assert self.peft_model is not None
+            return [p for p in self.peft_model.parameters() if p.requires_grad]
+        else:
+            return [p for p in self.backbone.parameters() if p.requires_grad]
+
+
+    # ---------------- ABSTRACT INTERFACES ----------------
     def _forward_head(self, repr):
-        assert self.current_head is not None, "No current head is choosen"
+        assert self.current_head is not None
         return self.current_head(repr)
 
     @abstractmethod
-    def _get_representations(self, x):
-        pass
+    def _get_representations(self, x): pass
 
     @abstractmethod
-    def training_step(self, batch, batch_idx, *args: Any, **kwargs: Any):
-        pass
+    def training_step(self, batch, batch_idx): pass
 
     @abstractmethod
-    def test_step(self, *args: Any, **kwargs: Any):
-        pass
+    def validation_step(self, batch, batch_idx): pass
 
     @abstractmethod
-    def validation_step(self, *args: Any, **kwargs: Any):
-        pass
-
-    # ====== Nostalgia: Code ======
-    def _get_flat_grad(self):
-        grad, params = [], []
-        if self.use_peft:
-            assert self.peft_model is not None, "PEFT Model is None: Can't compute PEFT Flat grad vector"
-            params = [p for p in self.peft_model.parameters() if p.requires_grad]
-        else:
-            params = self.backbone.parameters()
-        for p in params:
-            if p.grad is not None:
-                grad.append(p.grad.view(-1))
-        return torch.cat(grad)
-
-    def _apply_nostalgia_operators(self, Q, g):
-        v = Q.T @ g
-        return g - (Q@v)
-
-    def _set_params_grad(self, flat_grad):
-        idx = 0
-        params = []
-        if self.use_peft:
-            assert self.peft_model is not None, "PEFT Model is None: Can't compute PEFT Flat grad vector"
-            params = [p for p in self.peft_model.parameters() if p.requires_grad]
-        else:
-            params = self.backbone.parameters()
-
-        for p in params:
-            num = p.numel()
-            if p.grad is not None:
-                p.grad.copy_(flat_grad[idx:idx+num].view_as(p))
-            idx += num
+    def test_step(self, batch, batch_idx): pass
