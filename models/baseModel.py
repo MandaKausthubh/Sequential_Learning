@@ -1,15 +1,13 @@
-# base_model.py
 from abc import abstractmethod
 
-from torch import nn, optim, Tensor
+from torch import nn, Tensor
 from lightning import LightningModule
 
 from peft import PeftConfig, PeftMixedModel, PeftModel, get_peft_model
 import torch
 from transformers import AutoModel, AutoConfig, AutoProcessor, PreTrainedModel
-from typing import Dict, Optional, Tuple, Union, Iterable, cast
+from typing import Dict, Optional, Tuple, Union, cast
 
-# ★ import the optimizer we wrote earlier
 from utils.nostalgia import NostalgiaOptimizer
 
 
@@ -110,39 +108,60 @@ class BaseModel(LightningModule):
     def switch_off_nostalgia(self): self.use_nostalgia = False
 
     # ============= OPTIMIZER INTEGRATION ==============
-    def configure_optimizers(self): #type: ignore
-        # ★ If nostalgia ON -> wrap AdamW or any optimizer with NostalgiaOptimizer
-        if self.use_nostalgia:
+    def configure_optimizers(self): # type: ignore
+        """
+        Correct optimizer setup for:
+          - PEFT or full backbone fine-tuning
+          - Task-specific heads
+          - Nostalgia gradient projection (backbone only)
+        """
 
-            params = self._get_trainable_params()
-            base_opt = optim.AdamW(params, lr=1e-4)
-
-            nostalgia = NostalgiaOptimizer(
-                base_opt,
-                params=params,
-                device=self.device,      # Lightning gives this automatically
-                dtype=torch.float32
-            )
-
-            # If Q available from previous task, set it
-            if self.nostalgia_Q is not None:
-                nostalgia.set_Q(self.nostalgia_Q, scaling=self.nostalgia_scaling)
-
-            return nostalgia
-
-        # ★ Non-Nostalgia mode → return normal optimizer
-        else:
-            params = self._get_trainable_params()
-            return optim.AdamW(params, lr=1e-4)
-
-
-    # ★ Helper: choose which params to optimize
-    def _get_trainable_params(self) -> Iterable[nn.Parameter]:
         if self.use_peft:
             assert self.peft_model is not None
-            return [p for p in self.peft_model.parameters() if p.requires_grad]
+            backbone_params = [p for p in self.peft_model.parameters() if p.requires_grad]
         else:
-            return [p for p in self.backbone.parameters() if p.requires_grad]
+            backbone_params = [p for p in self.backbone.parameters() if p.requires_grad]
+
+        head_params = []
+        if self.current_head is not None:
+            head_params = [p for p in self.current_head.parameters() if p.requires_grad]
+
+        base_opt = torch.optim.AdamW(backbone_params + head_params, lr=1e-4, weight_decay=1e-2)
+
+        if not self.use_nostalgia:
+            return {"optimizer": base_opt}
+
+
+        nostalgia_opt = NostalgiaOptimizer(
+            base_optimizer=base_opt,
+            params=backbone_params,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        if self.nostalgia_Q is not None:
+            nostalgia_opt.set_Q(
+                self.nostalgia_Q,
+                scaling=self.nostalgia_scaling,
+            )
+        return {"optimizer": nostalgia_opt}
+
+
+    # Helper: choose which params to optimize
+    def _get_trainable_params(self):
+        # Backbone or PEFT parameters
+        if self.use_peft:
+            assert self.peft_model is not None
+            backbone_params = [p for p in self.peft_model.parameters() if p.requires_grad]
+        else:
+            backbone_params = [p for p in self.backbone.parameters() if p.requires_grad]
+
+        # Current task head parameters
+        head_params = []
+        if self.current_head is not None:
+            head_params = [p for p in self.current_head.parameters() if p.requires_grad]
+
+        return backbone_params + head_params
 
 
     # ---------------- ABSTRACT INTERFACES ----------------
