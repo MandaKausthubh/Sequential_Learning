@@ -61,6 +61,7 @@ class NostalgiaOptimizer:
         dtype: numeric dtype for the internal projection (float32 recommended)
         """
         self.base = base_optimizer
+        self.state = self.base.state
         # store params list (preserve order)
         self.params: List[torch.Tensor] = list(params)
 
