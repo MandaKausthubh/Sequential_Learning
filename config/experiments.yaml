@@ -24,7 +24,7 @@ tasks:
   - name: imagenet
     type: ImageNet
     # This folder should contain "train" and "val" subfolders in ImageNet ImageFolder format
-    root: /data/imagenet
+    root: $DATA_LOCATION/imagenet
     split: train
     num_classes: 1000
     epochs: 3
@@ -32,12 +32,12 @@ tasks:
     eval:
       - name: imagenet-val
         type: ImageNet
-        root: /data/imagenet
+        root: $DATA_LOCATION/imagenet
         split: val
 
   - name: imagenetv2
     type: ImageNetV2MF
-    root: /data/imagenetv2_matched
+    root: $DATA_LOCATION/imagenetv2_matched
     # Place label file named "imagenetv2-matched-frequency-labels.txt" in the same folder.
     # That file must contain one integer label per image in the same alphabetical order.
     epochs: 1
@@ -45,43 +45,43 @@ tasks:
     eval:
       - name: imagenetv2-val
         type: ImageNetV2MF
-        root: /data/imagenetv2_matched
+        root: $DATA_LOCATION/imagenetv2_matched
 
   - name: imagenet_r
     type: ImageNetR
-    root: /data/imagenet_r
-    class_map_path: /data/imagenet_class_index.json
+    root: $DATA_LOCATION/imagenet_r
+    class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 1
     num_classes: 1000
     eval:
       - name: imagenet-r
         type: ImageNetR
-        root: /data/imagenet_r
-        class_map_path: /data/imagenet_class_index.json
+        root: $DATA_LOCATION/imagenet_r
+        class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
   - name: imagenet_a
     type: ImageNetA
-    root: /data/imagenet_a
-    class_map_path: /data/imagenet_class_index.json
+    root: $DATA_LOCATION/imagenet_a
+    class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 1
     num_classes: 1000
     eval:
       - name: imagenet-a
         type: ImageNetA
-        root: /data/imagenet_a
-        class_map_path: /data/imagenet_class_index.json
+        root: $DATA_LOCATION/imagenet_a
+        class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
   - name: sketch
     type: ImageNetSketch
-    root: /data/imagenet_sketch
-    class_map_path: /data/imagenet_class_index.json
+    root: $DATA_LOCATION/imagenet_sketch
+    class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 1
     num_classes: 1000
     eval:
       - name: imagenet-sketch
         type: ImageNetSketch
-        root: /data/imagenet_sketch
-        class_map_path: /data/imagenet_class_index.json
+        root: $DATA_LOCATION/imagenet_sketch
+        class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
 # Nostalgia / accumulation settings used by accumulate_subspaces_fast
 nostalgia:
@@ -101,5 +101,5 @@ trainer:
 global_eval:
   - name: all_imagenet_val
     type: ImageNet
-    root: /data/imagenet
+    root: $DATA_LOCATION/imagenet
     split: val
