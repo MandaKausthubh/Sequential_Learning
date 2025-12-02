@@ -1,0 +1,105 @@
+# experiments.yaml
+# Sequential Vision experiment for ViT + Nostalgia / ACCUMULATE
+# Edit the "root" and "class_map_path" entries to match local dataset locations.
+
+experiment_name: nostalgia_vit_imagenet_seq
+output_dir: ./exp_outputs
+
+device: cuda
+seed: 0
+
+model:
+  # The script instantiates ViTBaseModel from your code.
+  model_name: google/vit-base-patch16-224
+  use_peft: false
+  user_nostalgia: true
+  lanczos_r: 16
+
+data:
+  batch_size: 64
+  num_workers: 8
+
+# Ordered sequential tasks. Each task trains on the dataset listed.
+tasks:
+  - name: imagenet
+    type: ImageNet
+    # This folder should contain "train" and "val" subfolders in ImageNet ImageFolder format
+    root: /data/imagenet
+    split: train
+    num_classes: 1000
+    epochs: 3
+    # evaluate on ImageNet val after finishing this task
+    eval:
+      - name: imagenet-val
+        type: ImageNet
+        root: /data/imagenet
+        split: val
+
+  - name: imagenetv2
+    type: ImageNetV2MF
+    root: /data/imagenetv2_matched
+    # Place label file named "imagenetv2-matched-frequency-labels.txt" in the same folder.
+    # That file must contain one integer label per image in the same alphabetical order.
+    epochs: 1
+    num_classes: 1000
+    eval:
+      - name: imagenetv2-val
+        type: ImageNetV2MF
+        root: /data/imagenetv2_matched
+
+  - name: imagenet_r
+    type: ImageNetR
+    root: /data/imagenet_r
+    class_map_path: /data/imagenet_class_index.json
+    epochs: 1
+    num_classes: 1000
+    eval:
+      - name: imagenet-r
+        type: ImageNetR
+        root: /data/imagenet_r
+        class_map_path: /data/imagenet_class_index.json
+
+  - name: imagenet_a
+    type: ImageNetA
+    root: /data/imagenet_a
+    class_map_path: /data/imagenet_class_index.json
+    epochs: 1
+    num_classes: 1000
+    eval:
+      - name: imagenet-a
+        type: ImageNetA
+        root: /data/imagenet_a
+        class_map_path: /data/imagenet_class_index.json
+
+  - name: sketch
+    type: ImageNetSketch
+    root: /data/imagenet_sketch
+    class_map_path: /data/imagenet_class_index.json
+    epochs: 1
+    num_classes: 1000
+    eval:
+      - name: imagenet-sketch
+        type: ImageNetSketch
+        root: /data/imagenet_sketch
+        class_map_path: /data/imagenet_class_index.json
+
+# Nostalgia / accumulation settings used by accumulate_subspaces_fast
+nostalgia:
+  rank_k: 32
+  use_cpu_for_eig: false
+  use_svd_fallback: false
+  eps: 1e-12
+
+# Trainer-level options (the script uses per-task epochs from each task entry)
+trainer:
+  # Leave max_epochs null to let each task control epochs in the YAML
+  max_epochs: null
+  gpus: 1
+  precision: 32
+
+# Optional global evaluation sets to run at the end
+global_eval:
+  - name: all_imagenet_val
+    type: ImageNet
+    root: /data/imagenet
+    split: val
