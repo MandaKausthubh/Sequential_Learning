@@ -36,8 +36,8 @@ tasks:
     type: ImageNet
     root: $DATA_LOCATION/imagenet
     split: train
-    num_classes: 1000
-    epochs: 3
+    num_classes: 5
+    epochs: 150
     eval:
       - name: imagenet-val
         type: ImageNet
@@ -47,7 +47,7 @@ tasks:
   - name: imagenetv2
     type: ImageNetV2MF
     root: $DATA_LOCATION/imagenetv2_matched
-    epochs: 1
+    epochs: 2
     num_classes: 1000
     eval:
       - name: imagenetv2-val
@@ -58,7 +58,7 @@ tasks:
     type: ImageNetR
     root: $DATA_LOCATION/imagenet_r
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
-    epochs: 1
+    epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-r
@@ -70,7 +70,7 @@ tasks:
     type: ImageNetA
     root: $DATA_LOCATION/imagenet_a
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
-    epochs: 1
+    epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-a
@@ -82,7 +82,7 @@ tasks:
     type: ImageNetSketch
     root: $DATA_LOCATION/imagenet_sketch
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
-    epochs: 1
+    epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-sketch
