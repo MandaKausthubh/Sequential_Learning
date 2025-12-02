@@ -10,6 +10,7 @@ import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader
+from peft import LoraConfig
 
 # Import your model and datasets
 # Adjust import paths as needed for your project
@@ -137,7 +138,14 @@ def run_experiment(cfg: dict):
     model_cfg = cfg.get("model", {})
     model_name = model_cfg.get("model_name", "google/vit-base-patch16-224")
     use_peft = bool(model_cfg.get("use_peft", False))
-    peft_config = None if not use_peft else model_cfg.get("peft_config", {})
+    peft_raw = model_cfg.get("peft", None)
+    peft_config = None if not use_peft or peft_raw is None else LoraConfig(
+            r=peft_raw.get("r", 8),
+            lora_alpha=peft_raw.get("lora_alpha", 16),
+            lora_dropout=peft_raw.get("lora_dropout", 0.0),
+            bias=peft_raw.get("bias", "none"),
+            target_modules=peft_raw.get("target_modules", []),
+        )
     user_nostalgia = bool(model_cfg.get("user_nostalgia", False))
     lanczos_r = int(model_cfg.get("lanczos_r", 16))
 
