@@ -36,7 +36,7 @@ def set_seed(seed: int):
 def build_dataset(task_cfg: dict, global_cfg: dict):
     """Factory for datasets defined in the YAML."""
     ds_type = task_cfg["type"]
-    root = task_cfg["root"]
+    root = os.path.expandvars(task_cfg["root"])
     class_map = task_cfg.get("class_map_path", task_cfg.get("class_map_path", None))
     split = task_cfg.get("split", None)
 
