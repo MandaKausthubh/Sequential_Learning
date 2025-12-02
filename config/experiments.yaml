@@ -15,20 +15,29 @@ model:
   user_nostalgia: true
   lanczos_r: 16
 
+  peft:
+    type: lora
+    r: 8
+    lora_alpha: 16
+    lora_dropout: 0.05
+    bias: none
+    target_modules:
+      - query
+      - value
+      - key
+      - output.dense
+
 data:
   batch_size: 64
   num_workers: 8
 
-# Ordered sequential tasks. Each task trains on the dataset listed.
 tasks:
   - name: imagenet
     type: ImageNet
-    # This folder should contain "train" and "val" subfolders in ImageNet ImageFolder format
     root: $DATA_LOCATION/imagenet
     split: train
     num_classes: 1000
     epochs: 3
-    # evaluate on ImageNet val after finishing this task
     eval:
       - name: imagenet-val
         type: ImageNet
@@ -38,8 +47,6 @@ tasks:
   - name: imagenetv2
     type: ImageNetV2MF
     root: $DATA_LOCATION/imagenetv2_matched
-    # Place label file named "imagenetv2-matched-frequency-labels.txt" in the same folder.
-    # That file must contain one integer label per image in the same alphabetical order.
     epochs: 1
     num_classes: 1000
     eval:
@@ -83,21 +90,17 @@ tasks:
         root: $DATA_LOCATION/imagenet_sketch
         class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
-# Nostalgia / accumulation settings used by accumulate_subspaces_fast
 nostalgia:
   rank_k: 32
   use_cpu_for_eig: false
   use_svd_fallback: false
   eps: 1e-12
 
-# Trainer-level options (the script uses per-task epochs from each task entry)
 trainer:
-  # Leave max_epochs null to let each task control epochs in the YAML
   max_epochs: null
   gpus: 1
   precision: 32
 
-# Optional global evaluation sets to run at the end
 global_eval:
   - name: all_imagenet_val
     type: ImageNet

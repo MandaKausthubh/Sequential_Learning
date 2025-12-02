@@ -13,12 +13,11 @@ from torch.utils.data import DataLoader
 
 # Import your model and datasets
 # Adjust import paths as needed for your project
-from models.ViT_Base32 import ViTBaseModel   # <-- replace with actual path if different
+from models.ViT_Base32 import ViTBaseModel
 from datasets.VisionDatasets import (
     ImageNet, ImageNetV2MF, ImageNetA, ImageNetR, ImageNetSketch
 )
 
-# Import accumulate function you provided (assumed to be on PYTHONPATH)
 from utils.accumulate import accumulate_subspaces_fast
 
 
