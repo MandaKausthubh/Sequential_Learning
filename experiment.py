@@ -137,6 +137,7 @@ def run_experiment(cfg: dict):
     model_cfg = cfg.get("model", {})
     model_name = model_cfg.get("model_name", "google/vit-base-patch16-224")
     use_peft = bool(model_cfg.get("use_peft", False))
+    peft_config = None if not use_peft else model_cfg.get("peft_config", {})
     user_nostalgia = bool(model_cfg.get("user_nostalgia", False))
     lanczos_r = int(model_cfg.get("lanczos_r", 16))
 
@@ -146,9 +147,10 @@ def run_experiment(cfg: dict):
         model_name=model_name,
         lanczos_r=lanczos_r,
         use_peft=use_peft,
-        peft_config=None,
+        peft_config=peft_config,
         user_nostalgia=user_nostalgia,
     )
+    model.to(device)
 
     # Add a 1000-class head by default (ImageNet). If you have varied class counts,
     # you can adapt this to read per-task num_classes from YAML.
