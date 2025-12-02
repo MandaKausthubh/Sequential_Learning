@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from torch import nn, Tensor
-from lightning import LightningModule
+from pytorch_lightning import LightningModule
 
 from peft import PeftConfig, PeftMixedModel, PeftModel, get_peft_model
 import torch
