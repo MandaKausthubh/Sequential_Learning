@@ -92,7 +92,7 @@ def safe_get_subspace(model, task_name: str, rank_k: int, device: torch.device):
 
     # Create random Q of shape (n_params, rank_k)
     rank_k = min(rank_k, n_params)
-    torch.manual_seed(int(time.time()) % (2 ** 32))
+    # torch.manual_seed(int(time.time()) % (2 ** 32))
     Q_rand = torch.randn(n_params, rank_k, device=device, dtype=torch.float32)
     Q_new, _ = torch.linalg.qr(Q_rand)  # orthonormal columns
     # Synthetic eigenvalues (descending)
