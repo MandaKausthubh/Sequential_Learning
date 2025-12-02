@@ -11,7 +11,7 @@ seed: 0
 model:
   # The script instantiates ViTBaseModel from your code.
   model_name: google/vit-base-patch16-224
-  use_peft: false
+  use_peft: true
   user_nostalgia: true
   lanczos_r: 16
 
