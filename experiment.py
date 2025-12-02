@@ -121,6 +121,12 @@ def write_results_csv(out_path: str, rows: list):
             writer.writerow(r)
 
 
+def collate_fn(batch):
+    images = [item["image"] for item in batch]
+    labels = torch.tensor([item["label"] for item in batch], dtype=torch.long)
+    return {"image": images, "label": labels}
+
+
 # ------------------------
 # Main experiment runner
 # ------------------------
@@ -217,6 +223,7 @@ def run_experiment(cfg: dict):
             num_workers=num_workers,
             pin_memory=True,
             persistent_workers=(num_workers > 0),
+            collate_fn=collate_fn,
         )
 
         # per-task training epochs
