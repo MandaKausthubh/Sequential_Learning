@@ -224,7 +224,7 @@ def run_experiment(cfg: dict):
         # Train: using Trainer.fit (Lightning)
         print(f"[train] Fitting task={task_name} epochs={epochs} bs={batch_size}")
         # If the YAML specifies per-task max epochs that differ from trainer, we temporarily override
-        trainer.max_epochs = epochs # type: ignore
+        # trainer.max_epochs = epochs # type: ignore
         trainer.fit(model, train_loader, ckpt_path=None)  # type: ignore
 
         # After training: estimate task subspace Q_new, L_new
