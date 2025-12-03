@@ -37,7 +37,7 @@ tasks:
     root: $DATA_LOCATION/imagenet
     split: train
     num_classes: 5
-    epochs: 150
+    epochs: 10
     eval:
       - name: imagenet-val
         type: ImageNet
