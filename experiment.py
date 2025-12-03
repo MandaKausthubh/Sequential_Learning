@@ -20,6 +20,7 @@ from datasets.VisionDatasets import (
 )
 
 from utils.accumulate import accumulate_subspaces_fast
+from utils.lanczos import safe_get_subspace
 
 
 # ------------------------
@@ -60,44 +61,44 @@ def build_dataset(task_cfg: dict, global_cfg: dict):
         raise ValueError(f"Unknown dataset type: {ds_type}")
 
 
-def safe_get_subspace(model, task_name: str, rank_k: int, device: torch.device):
-    """
-    Try to obtain task Hessian subspace (Q_new, L_new) from model.
-    1) call model.compute_task_subspace(task_name, rank_k)
-    2) call model.estimate_hessian_subspace(task_name, rank_k)
-    3) fallback: produce a random orthonormal Q and small decreasing eigenvalues.
-    NOTE: The user should implement (1) or (2) in the model to compute real subspace.
-    """
-    # prefer user-implemented methods
-    for method_name in ("compute_task_subspace", "estimate_hessian_subspace", "compute_hessian_subspace"):
-        fn = getattr(model, method_name, None)
-        if callable(fn):
-            print(f"[subspace] Using model.{method_name} to estimate Q_new,L_new")
-            Q_new, L_new = fn(task_name=task_name, rank_k=rank_k)
-            # move to device
-            Q_new = Q_new.to(device)
-            L_new = L_new.to(device)
-            return Q_new, L_new
-
-    # fallback: create random orthonormal Q_new
-    warnings.warn(
-        "No subspace estimation method found on model. "
-        "Using random orthonormal fallback for Q_new/L_new. "
-        "Replace this with your model.compute_task_subspace implementation for real experiments."
-    )
-    # n should match number of tunable parameters used by nostalgia: try to fetch model parameter count
-    n_params = sum(p.numel() for p in model._get_trainable_params())
-    if n_params == 0:
-        raise RuntimeError("Model has zero trainable params; cannot create fallback subspace.")
-
-    # Create random Q of shape (n_params, rank_k)
-    rank_k = min(rank_k, n_params)
-    # torch.manual_seed(int(time.time()) % (2 ** 32))
-    Q_rand = torch.randn(n_params, rank_k, device=device, dtype=torch.float32)
-    Q_new, _ = torch.linalg.qr(Q_rand)  # orthonormal columns
-    # Synthetic eigenvalues (descending)
-    L_new = torch.linspace(1.0, 0.1, steps=rank_k, device=device, dtype=torch.float32)
-    return Q_new, L_new
+# def safe_get_subspace(model, task_name: str, rank_k: int, device: torch.device):
+#     """
+#     Try to obtain task Hessian subspace (Q_new, L_new) from model.
+#     1) call model.compute_task_subspace(task_name, rank_k)
+#     2) call model.estimate_hessian_subspace(task_name, rank_k)
+#     3) fallback: produce a random orthonormal Q and small decreasing eigenvalues.
+#     NOTE: The user should implement (1) or (2) in the model to compute real subspace.
+#     """
+#     # prefer user-implemented methods
+#     for method_name in ("compute_task_subspace", "estimate_hessian_subspace", "compute_hessian_subspace"):
+#         fn = getattr(model, method_name, None)
+#         if callable(fn):
+#             print(f"[subspace] Using model.{method_name} to estimate Q_new,L_new")
+#             Q_new, L_new = fn(task_name=task_name, rank_k=rank_k)
+#             # move to device
+#             Q_new = Q_new.to(device)
+#             L_new = L_new.to(device)
+#             return Q_new, L_new
+#
+#     # fallback: create random orthonormal Q_new
+#     warnings.warn(
+#         "No subspace estimation method found on model. "
+#         "Using random orthonormal fallback for Q_new/L_new. "
+#         "Replace this with your model.compute_task_subspace implementation for real experiments."
+#     )
+#     # n should match number of tunable parameters used by nostalgia: try to fetch model parameter count
+#     n_params = sum(p.numel() for p in model._get_trainable_params())
+#     if n_params == 0:
+#         raise RuntimeError("Model has zero trainable params; cannot create fallback subspace.")
+#
+#     # Create random Q of shape (n_params, rank_k)
+#     rank_k = min(rank_k, n_params)
+#     # torch.manual_seed(int(time.time()) % (2 ** 32))
+#     Q_rand = torch.randn(n_params, rank_k, device=device, dtype=torch.float32)
+#     Q_new, _ = torch.linalg.qr(Q_rand)  # orthonormal columns
+#     # Synthetic eigenvalues (descending)
+#     L_new = torch.linspace(1.0, 0.1, steps=rank_k, device=device, dtype=torch.float32)
+#     return Q_new, L_new
 
 
 def write_results_csv(out_path: str, rows: list):
@@ -208,10 +209,12 @@ def run_experiment(cfg: dict):
         ds_type = task["type"]
         print(f"\n=== Running task {task_name} (type={ds_type}) ===")
 
-        # build dataset and dataloader
+        # ------------------------------
+        # 1. Build dataset + dataloader
+        # ------------------------------
         dataset = build_dataset(task, cfg)
-        num_classes = task.get("num_classes", 1000)  # default to 1000
-        # add or overwrite head for this task
+        num_classes = task.get("num_classes", 1000)
+
         if task_name not in model.task_dict:
             model.add_task(task_name, num_classes)
         model.set_current_task_head(task_name)
@@ -226,20 +229,53 @@ def run_experiment(cfg: dict):
             collate_fn=collate_fn,
         )
 
-        # per-task training epochs
+        # ------------------------------
+        # 2. Train the task
+        # ------------------------------
         epochs = int(task.get("epochs", 1))
-        # Train: using Trainer.fit (Lightning)
         print(f"[train] Fitting task={task_name} epochs={epochs} bs={batch_size}")
-        # If the YAML specifies per-task max epochs that differ from trainer, we temporarily override
-        # trainer.max_epochs = epochs # type: ignore
-        trainer.fit(model, train_loader, ckpt_path=None)  # type: ignore
 
-        # After training: estimate task subspace Q_new, L_new
-        print("[subspace] Estimating task subspace...")
-        Q_new, L_new = safe_get_subspace(model, task_name=task_name, rank_k=rank_k, device=acc_device)
+        trainer.fit(model, train_loader, ckpt_path=None)
 
-        # Accumulate with previous Q_accum/L_accum
-        print("[accumulate] Merging subspaces...")
+        # ------------------------------
+        # 3. Merge LoRA → backbone (MANDATORY)
+        # ------------------------------
+        if model.use_peft:
+            print("[merge] Merging LoRA → backbone")
+            model._merge_and_unload()
+
+            # Reset LoRA adapters for next task (optional)
+            if hasattr(model, "peft_model") and (model.peft_model is not None):
+                print("[reset] Resetting LoRA adapters to zero")
+                for n, p in model.peft_model.named_parameters():
+                    if "lora_" in n:
+                        p.data.zero_()
+
+        # ------------------------------
+        # 4. Compute Hessian subspace Q_new / L_new
+        # ------------------------------
+        print("[subspace] Computing Hessian eigen-subspace (Lanczos + HVP)")
+
+        # criterion for Hessian eigenthings
+        from torch.nn import CrossEntropyLoss
+        criterion = CrossEntropyLoss()
+
+        Q_new, L_new = safe_get_subspace(
+            model=model,
+            task_name=task_name,
+            rank_k=rank_k,
+            device=acc_device,
+            subset_size=nostalgia_cfg.get("lanczos_subset", 10000),
+            batch_size=batch_size,
+            criterion=criterion,
+            dataloader=train_loader,
+        )
+
+        # ------------------------------
+        # 5. Accumulate subspaces
+        # ------------------------------
+        print("[accumulate] Merging Q/L with accumulated subspace")
+
         Q_accum, L_accum, diag = accumulate_subspaces_fast(
             Q_old=Q_accum,
             L_old=L_accum,
@@ -252,9 +288,16 @@ def run_experiment(cfg: dict):
             eps=nostalgia_cfg.get("eps", 1e-12),
             verbose=1,
         )
-        # Save accumulated subspace into model for NostalgiaOptimizer usage
+
+        # ------------------------------
+        # 6. Install new Q_accum into Nostalgia optimizer
+        # ------------------------------
+        print("[nostalgia] Updating Nostalgia optimizer with new Q/L")
         model.nostalgia_Q = Q_accum
         model.nostalgia_scaling = L_accum
+
+        # Optionally reconfigure optimizers to pick up new Q
+        # trainer.strategy.optimizer_state = None
 
         # Reconfigure optimizers if necessary (Lightning will call configure_optimizers when needed).
         # Evaluate on validation/test splits if present in YAML 'eval' field
