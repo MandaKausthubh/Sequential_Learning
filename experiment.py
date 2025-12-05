@@ -3,12 +3,12 @@ import time
 import yaml
 import argparse
 import csv
-import warnings
 
 import torch
 import numpy as np
-import pytorch_lightning as pl
+from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 from torch.utils.data import DataLoader
 from peft import LoraConfig
 
@@ -21,6 +21,7 @@ from datasets.VisionDatasets import (
 
 from utils.accumulate import accumulate_subspaces_fast
 from utils.lanczos import safe_get_subspace
+
 
 
 # ------------------------
@@ -187,8 +188,18 @@ def run_experiment(cfg: dict):
 
     # instantiate a single trainer that can be reused per-task
     # Note: per-task epochs are controlled by the YAML task entries
+    csv_logger = CSVLogger(save_dir=out_dir, name=exp_name)
+    tensorboard_logger = TensorBoardLogger(save_dir=out_dir, name=exp_name)
+    wandb_cfg = cfg.get("wandb_logger", None)
+    wandb_logger = None
+    if wandb_cfg is not None and wandb_cfg.get("project", None) is not None:
+        wandb_logger = WandbLogger(
+            project=wandb_cfg["project"],
+            name=wandb_cfg.get("name", exp_name),
+            save_dir=out_dir,
+        )
     trainer = Trainer(
-        logger=pl.loggers.CSVLogger(save_dir=out_dir, name=exp_name),
+        logger= [csv_logger, tensorboard_logger, wandb_logger] if wandb_logger is not None else [csv_logger, tensorboard_logger],
         max_epochs=trainer_cfg.get("max_epochs", None),
         **trainer_kwargs
     )
@@ -256,8 +267,6 @@ def run_experiment(cfg: dict):
         # ------------------------------
         print("[subspace] Computing Hessian eigen-subspace (Lanczos + HVP)")
 
-        # criterion for Hessian eigenthings
-        from torch.nn import CrossEntropyLoss
         criterion = CrossEntropyLoss()
 
         Q_new, L_new = safe_get_subspace(
@@ -276,7 +285,7 @@ def run_experiment(cfg: dict):
         # ------------------------------
         print("[accumulate] Merging Q/L with accumulated subspace")
 
-        Q_accum, L_accum, diag = accumulate_subspaces_fast(
+        Q_accum, L_accum, _ = accumulate_subspaces_fast(
             Q_old=Q_accum,
             L_old=L_accum,
             Q_new=Q_new,

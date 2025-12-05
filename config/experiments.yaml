@@ -85,6 +85,12 @@ tasks:
         root: $DATA_LOCATION/imagenet_sketch
         class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
+wandb_logger:
+  enable: true
+  project: "my-vit-project"
+  tags: ["vit", "continual learning"]
+  notes: "ViT baseline run with PEFT + Nostalgia"
+
 nostalgia:
   rank_k: 32
   use_cpu_for_eig: false
