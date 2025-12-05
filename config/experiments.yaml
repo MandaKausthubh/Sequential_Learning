@@ -41,48 +41,48 @@ tasks:
   #
   - name: imagenetv2
     type: ImageNetV2MF
-    root: $DATA_LOCATION/imagenetv2_matched
+    root: $DATA_LOCATION/imagenetv2-matched-frequency
     epochs: 2
     num_classes: 1000
     eval:
       - name: imagenetv2-val
         type: ImageNetV2MF
-        root: $DATA_LOCATION/imagenetv2_matched
+        root: $DATA_LOCATION/imagenetv2-matched-frequency
 
   - name: imagenet_r
     type: ImageNetR
-    root: $DATA_LOCATION/imagenet_r
+    root: $DATA_LOCATION/imagenet-r
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-r
         type: ImageNetR
-        root: $DATA_LOCATION/imagenet_r
+        root: $DATA_LOCATION/imagenet-r
         class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
   - name: imagenet_a
     type: ImageNetA
-    root: $DATA_LOCATION/imagenet_a
+    root: $DATA_LOCATION/imagenet-a
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-a
         type: ImageNetA
-        root: $DATA_LOCATION/imagenet_a
+        root: $DATA_LOCATION/imagenet-a
         class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
   - name: sketch
     type: ImageNetSketch
-    root: $DATA_LOCATION/imagenet_sketch
+    root: $DATA_LOCATION/sketch
     class_map_path: $DATA_LOCATION/imagenet_class_index.json
     epochs: 2
     num_classes: 1000
     eval:
       - name: imagenet-sketch
         type: ImageNetSketch
-        root: $DATA_LOCATION/imagenet_sketch
+        root: $DATA_LOCATION/sketch
         class_map_path: $DATA_LOCATION/imagenet_class_index.json
 
 wandb_logger:
