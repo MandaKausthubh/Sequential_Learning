@@ -38,7 +38,7 @@ tasks:
   #       type: ImageNet
   #       root: $DATA_LOCATION/imagenet
   #       split: val
-  #
+
   - name: imagenetv2
     type: ImageNetV2MF
     root: $DATA_LOCATION/imagenetv2-matched-frequency
