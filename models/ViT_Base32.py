@@ -71,6 +71,7 @@ class ViTBaseModel(BaseModel):
             images=inputs,
             return_tensors="pt"
         ).to(self.device)
+        processed = {k: v.to(self.device) for k, v in processed.items()}
 
         if self.peft_active:
             assert self.peft_model is not None, "PEFT model is None, while peft_active is True"

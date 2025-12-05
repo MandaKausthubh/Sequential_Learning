@@ -13,7 +13,7 @@ from utils.nostalgia import NostalgiaOptimizer
 
 class TaskHead(nn.Module):
     def __init__(self, task_name: str, input_dim: int, output_dim: int,
-                 loss_function = nn.CrossEntropyLoss()):
+                 loss_function: Optional[nn.Module] = None):
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss_function = loss_function
@@ -23,6 +23,7 @@ class TaskHead(nn.Module):
         return self.linear(data)
 
     def calculate_loss(self, y, target) -> Tensor:
+        assert self.loss_function is not None, "Loss function not defined for this task head."
         return self.loss_function(y, target)
 
 
@@ -41,8 +42,8 @@ class BaseModel(LightningModule):
         self.use_peft = use_peft
         self.peft_config = peft_config
 
-        if self.use_peft:
-            self.automatic_optimization = False
+        # if self.use_peft:
+        #     self.automatic_optimization = False
 
         self.model_config = AutoConfig.from_pretrained(self.model_name)
         self.backbone:PreTrainedModel = AutoModel.from_pretrained(self.model_name, config=self.model_config)
@@ -56,7 +57,7 @@ class BaseModel(LightningModule):
         else:
             raise AttributeError("Cannot determine classification header")
 
-        self.task_dict:Dict[str, TaskHead] = {}
+        self.task_dict = nn.ModuleDict()
         self.current_head:Optional[TaskHead]= None
         self.current_task:Optional[str] = None
 
@@ -92,14 +93,16 @@ class BaseModel(LightningModule):
 
 
     # ---------------- Tasks -------------------
-    def add_task(self, task_name:str, output_dim:int):
-        self.task_dict[task_name] = TaskHead(task_name, self.representation_dim, output_dim)
+    def add_task(self, task_name:str, output_dim:int, loss_function:Optional[nn.Module] = None):
+        if loss_function is None:
+            loss_function = nn.CrossEntropyLoss()
+        self.task_dict[task_name] = TaskHead(task_name, self.representation_dim, output_dim, loss_function)
 
     def set_current_task_head(self, task_name):
         if task_name not in self.task_dict:
             raise ValueError("Task not found")
         self.current_task = task_name
-        self.current_head = self.task_dict[task_name]
+        self.current_head = self.task_dict[task_name] #type: ignore
         return self.current_head
 
 
