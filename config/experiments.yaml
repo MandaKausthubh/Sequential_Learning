@@ -27,18 +27,18 @@ data:
   num_workers: 8
 
 tasks:
-  - name: imagenet
-    type: ImageNet
-    root: $DATA_LOCATION/imagenet
-    split: train
-    num_classes: 1000
-    epochs: 5
-    eval:
-      - name: imagenet-val
-        type: ImageNet
-        root: $DATA_LOCATION/imagenet
-        split: val
-
+  # - name: imagenet
+  #   type: ImageNet
+  #   root: $DATA_LOCATION/imagenet
+  #   split: train
+  #   num_classes: 1000
+  #   epochs: 5
+  #   eval:
+  #     - name: imagenet-val
+  #       type: ImageNet
+  #       root: $DATA_LOCATION/imagenet
+  #       split: val
+  #
   - name: imagenetv2
     type: ImageNetV2MF
     root: $DATA_LOCATION/imagenetv2_matched
